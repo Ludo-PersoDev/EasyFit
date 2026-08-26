@@ -1,0 +1,30 @@
+name: Sync Wger Exercises
+
+on:
+  schedule:
+    # S'exécute automatiquement le 1er de chaque mois à 3h du matin
+    - cron: '0 3 1 * *'
+  workflow_dispatch: # Permet aussi de le lancer manuellement depuis l'onglet Actions de GitHub
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests supabase
+
+      - name: Run synchronization script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python wger.py
