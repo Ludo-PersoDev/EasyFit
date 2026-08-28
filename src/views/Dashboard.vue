@@ -210,6 +210,19 @@
                 </div>
               </div>
 
+              <!-- BOUTON DE DEMANDE DE SUGGESTION IA SOUS LE NOM DE CHAQUE EXERCICE -->
+              <div v-if="!item.is_cardio">
+                <button 
+                  @click="fetchSingleAiSuggestion(item)" 
+                  :disabled="item.isLoadingAi"
+                  class="bg-purple-100 hover:bg-purple-200 text-purple-700 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                  title="Générer une suggestion IA pour cet exercice"
+                >
+                  <span>✨</span> 
+                  <span>{{ item.isLoadingAi ? 'Analyse en cours...' : 'Demander une suggestion IA' }}</span>
+                </button>
+              </div>
+
               <!-- CAS 1 : Exercice de Cardio -->
               <div v-if="item.is_cardio" class="bg-white p-3.5 rounded-xl border border-gray-200 space-y-3 shadow-2xs">
                 <div class="flex flex-wrap items-center justify-between gap-2">
@@ -282,6 +295,24 @@
 
               <!-- CAS 2 : Exercice de Musculation classique -->
               <div v-else class="space-y-2">
+                <!-- BANDEAU DE SUGGESTION IA -->
+				<div v-if="item.showAiSuggestion && item.aiRecommendation" class="bg-purple-50 border border-purple-200 p-3 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+				  <div class="flex items-center gap-2 text-xs text-purple-900">
+					<span>✨</span>
+					<div>
+					  <span class="font-bold">Conseil IA :</span> {{ item.aiRecommendation.text }}
+					</div>
+				  </div>
+				  <div class="flex items-center gap-1.5 flex-shrink-0">
+					<button @click="applyAiSuggestion(item)" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition active:scale-95 cursor-pointer">
+					  Appliquer
+					</button>
+					<button @click="dismissAiSuggestion(item)" class="text-purple-400 hover:text-purple-700 font-bold px-2 py-1.5 text-xs transition cursor-pointer" title="Ignorer">
+					  ✕
+					</button>
+				  </div>
+				</div>
+
                 <div class="grid grid-cols-12 gap-2 text-[10px] uppercase font-bold text-gray-400 px-1">
                   <span class="col-span-2 text-center">Série</span>
                   <span class="col-span-4 text-center">Poids (kg)</span>
@@ -300,7 +331,7 @@
                   </span>
 
                   <div class="col-span-4">
-                    <input v-model.number="set.weight" type="number" step="0.5" placeholder="0" class="w-full bg-gray-50 border border-gray-200 py-1.5 px-2 rounded-lg text-center text-xs font-bold text-gray-800 outline-none focus:border-indigo-500" />
+                    <input v-model.number="set.weight" type="number" step="0.5" placeholder="–" class="w-full bg-gray-50 border border-gray-200 py-1.5 px-2 rounded-lg text-center text-xs font-bold text-gray-800 outline-none focus:border-indigo-500" />
                   </div>
 
                   <div class="col-span-4">
@@ -364,6 +395,7 @@ const isExecutionModalOpen = ref(false)
 const activeScheduledId = ref(null)
 const executionBlocks = ref([])
 const loadingModal = ref(false)
+const activeWorkoutIdCache = ref(null)
 
 // Gestion du rappel de poids sur le Dashboard
 const showWeightReminder = ref(false)
@@ -794,11 +826,85 @@ const weekRangeLabel = computed(() => {
   return `${first.dayNumber} au ${last.dayNumber} ${new Date().toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })}`
 })
 
+// Fonction pour récupérer la suggestion IA spécifique à un exercice donné depuis le bouton sous son nom
+const fetchSingleAiSuggestion = async (item) => {
+  item.isLoadingAi = true
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const fourWeeksAgo = new Date()
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
+
+    // On cible bien EXCLUSIVEMENT l'historique de cet exercice sur les 4 dernières semaines
+    const { data: historyData } = await supabase
+      .from('workout_set_logs')
+      .select('weight, reps, set_number, created_at')
+      .eq('user_id', user.id)
+      .eq('exercise_name', item.exercise_name)
+      .eq('is_cardio', false)
+      .gte('created_at', fourWeeksAgo.toISOString())
+      .order('created_at', { ascending: true })
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+    if (!apiKey) return
+
+    // Utilisation d'un modèle flash standard stable pour l'API
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
+    
+    const prompt = `
+      Tu es un coach sportif expert. Analyse l'historique des 4 dernières semaines pour CET EXERCICE UNIQUEMENT (${item.exercise_name}).
+      Détermine s'il s'agit d'une progression ou d'une contre-performance, et propose la meilleure surcharge progressive (par le poids ou les répétitions).
+      
+      HISTORIQUE DE L'EXERCICE : ${JSON.stringify(historyData || [])}
+      EXERCICE ACTUEL : ${JSON.stringify({ name: item.exercise_name, sets: item.setsList.length, currentWeight: item.setsList[0]?.weight })}
+
+      Renvoie un objet JSON STRICT avec cette structure exacte :
+      { "weight": 62.5, "reps": 10, "text": "Analyse de tes perfs : passe à 62.5kg ou valide tes 10 reps." }
+    `
+
+    const aiRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { response_mime_type: "application/json" }
+      })
+    })
+
+    if (aiRes.status === 429) {
+      alert("Quota Gemini atteint (429). Patiente quelques secondes.")
+      return
+    }
+
+    const aiData = await aiRes.json()
+
+    if (aiData.candidates && aiData.candidates[0]) {
+      let rawText = aiData.candidates[0].content.parts[0].text.trim()
+      rawText = rawText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "")
+      const rec = JSON.parse(rawText)
+      
+      item.aiRecommendation = {
+        weight: Number(rec.weight) || (item.setsList[0]?.weight || 0),
+        reps: Number(rec.reps) || 10,
+        text: rec.text
+      }
+      item.showAiSuggestion = true
+    }
+  } catch (err) {
+    console.error("Erreur suggestion IA :", err)
+  } finally {
+    item.isLoadingAi = false
+  }
+}
+
 const openExecutionModal = async (scheduledId) => {
   activeScheduledId.value = scheduledId
   isExecutionModalOpen.value = true
   loadingModal.value = true
   executionBlocks.value = []
+  activeWorkoutIdCache.value = null
 
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -812,11 +918,14 @@ const openExecutionModal = async (scheduledId) => {
     if (schedError) throw schedError
 
     if (scheduledData) {
+      activeWorkoutIdCache.value = scheduledData.workout_id
+
       const { data: existingLogs } = await supabase
         .from('workout_set_logs')
         .select('*')
         .eq('scheduled_workout_id', scheduledId)
 
+      // Si la séance a déjà été validée/enregistrée pour cette occurrence exacte, on recharge ses propres logs
       if (existingLogs && existingLogs.length > 0) {
         const map = {}
         existingLogs.forEach(log => {
@@ -838,7 +947,7 @@ const openExecutionModal = async (scheduledId) => {
           }
           if (!log.is_cardio && (log.weight > 0 || log.set_number > 0)) {
             map[log.exercise_name].setsList.push({
-              weight: log.weight,
+              weight: log.weight > 0 ? log.weight : null,
               reps: log.reps,
               completed: true
             })
@@ -850,6 +959,7 @@ const openExecutionModal = async (scheduledId) => {
           exercises: [ex]
         }))
       } else {
+        // Sinon, c'est une nouvelle exécution : on va chercher les exercices du modèle
         const { data: exercisesData, error: exError } = await supabase
           .from('workout_exercises')
           .select('*')
@@ -858,66 +968,93 @@ const openExecutionModal = async (scheduledId) => {
         if (exError) throw exError
 
         if (exercisesData) {
-          const parsedExercises = await Promise.all(exercisesData.map(async (ex) => {
+          let lastLogsMap = {}
+          const exerciseNames = exercisesData.filter(ex => !ex.is_cardio && !(ex.duration_minutes > 0)).map(ex => ex.exercise_name)
+
+          if (exerciseNames.length > 0 && user) {
+            const fourWeeksAgo = new Date()
+            fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
+
+            const { data: historyData } = await supabase
+              .from('workout_set_logs')
+              .select('weight, reps, set_number, created_at, exercise_name')
+              .eq('user_id', user.id)
+              .in('exercise_name', exerciseNames)
+              .eq('is_cardio', false)
+              .gte('created_at', fourWeeksAgo.toISOString())
+              .order('created_at', { ascending: true })
+
+            if (historyData && historyData.length > 0) {
+              const groupedByEx = {}
+              historyData.forEach(log => {
+                if (!groupedByEx[log.exercise_name]) {
+                  groupedByEx[log.exercise_name] = []
+                }
+                groupedByEx[log.exercise_name].push(log)
+              })
+
+              Object.keys(groupedByEx).forEach(exName => {
+                const logs = groupedByEx[exName]
+                const maxDate = logs.reduce((latest, l) => l.created_at > latest ? l.created_at : latest, logs[0].created_at)
+                const lastSessionLogs = logs.filter(l => l.created_at === maxDate)
+                lastLogsMap[exName] = lastSessionLogs.sort((a, b) => a.set_number - b.set_number)
+              })
+            }
+          }
+
+          const parsedExercises = exercisesData.map((ex) => {
             const isCardio = Boolean(ex.is_cardio || (ex.duration_minutes !== null && ex.duration_minutes > 0))
             let setsArray = []
-            
+            let aiRecommendation = null
+
             if (!isCardio) {
-              let latestSetsData = []
+              const cleanExName = ex.exercise_name ? ex.exercise_name.trim().toLowerCase() : ""
+              const matchedLastLogKey = Object.keys(lastLogsMap).find(
+                k => k.trim().toLowerCase() === cleanExName
+              )
 
-              if (user) {
-                const threeWeeksAgo = new Date()
-                threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21)
+              if (matchedLastLogKey && lastLogsMap[matchedLastLogKey].length > 0) {
+                const lastSets = lastLogsMap[matchedLastLogKey]
+                
+                if (lastSets.length > 0) {
+                  const lastSet = lastSets[lastSets.length - 1]
+                  const suggestedWeight = lastSet.weight > 0 ? lastSet.weight : (ex.weight || 0)
+                  const suggestedReps = (lastSet.reps || 10) + 1
 
-                const { data: historyData } = await supabase
-                  .from('workout_set_logs')
-                  .select('weight, reps, set_number, scheduled_workout_id, created_at')
-                  .eq('user_id', user.id)
-                  .eq('exercise_name', ex.exercise_name)
-                  .eq('is_cardio', false)
-                  .gte('created_at', threeWeeksAgo.toISOString())
-                  .order('created_at', { ascending: false })
-
-                if (historyData && historyData.length > 0) {
-                  const sessionIds = [...new Set(historyData.map(item => item.scheduled_workout_id))]
-                  const latestSessionId = sessionIds[0]
-                  latestSetsData = historyData.filter(item => item.scheduled_workout_id === latestSessionId)
-                }
-              }
-
-              if (latestSetsData.length > 0) {
-                const averageLastReps = latestSetsData.reduce((acc, curr) => acc + curr.reps, 0) / latestSetsData.length
-
-                setsArray = latestSetsData.map(log => {
-                  let suggestedWeight = log.weight
-                  let suggestedReps = log.reps
-
-                  if (log.weight > 0) {
-                    if (averageLastReps >= 11) {
-                      suggestedWeight = Number((log.weight + 1).toFixed(1))
-                      suggestedReps = 8
-                    } else {
-                      suggestedWeight = log.weight
-                      suggestedReps = log.reps
-                    }
-                  }
-
-                  return {
+                  aiRecommendation = {
                     weight: suggestedWeight,
                     reps: suggestedReps,
-                    completed: false
+                    text: `Basé sur la dernière séance : tenter ${suggestedWeight}kg x ${suggestedReps} reps`
                   }
+                }
+
+                lastSets.forEach(s => {
+                  setsArray.push({
+                    weight: s.weight > 0 ? Number(s.weight) : null,
+                    reps: Number(s.reps) || (ex.reps || 10),
+                    completed: false
+                  })
                 })
               } else {
-                const totalSets = (ex.sets !== null && ex.sets !== undefined) ? Number(ex.sets) : 0
+                if (ex.weight > 0) {
+                  aiRecommendation = {
+                    weight: Number(ex.weight),
+                    reps: ex.reps || 10,
+                    text: `Objectif de base : ${ex.weight} kg x ${ex.reps || 10} reps`
+                  }
+                }
+
+                const totalSets = (ex.sets !== null && ex.sets !== undefined) ? Number(ex.sets) : 3
                 for (let i = 0; i < totalSets; i++) {
                   setsArray.push({
-                    weight: ex.weight || 0,
+                    weight: ex.weight > 0 ? Number(ex.weight) : null,
                     reps: ex.reps || 10,
                     completed: false
                   })
                 }
               }
+            } else {
+              setsArray = []
             }
 
             const initialDistance = ex.distance_km ? Number(ex.distance_km) : 0
@@ -935,9 +1072,12 @@ const openExecutionModal = async (scheduledId) => {
               avgPace: '--',
               is_superset: Boolean(ex.is_superset),
               setsList: setsArray,
+              aiRecommendation: aiRecommendation,
+              showAiSuggestion: false,
+              isLoadingAi: false,
               completed: false
             }
-          }))
+          })
 
           let blocks = []
           let currentBlock = null
@@ -968,10 +1108,23 @@ const openExecutionModal = async (scheduledId) => {
       }
     }
   } catch (err) {
-    console.error("Erreur chargement modale :", err)
+    console.error("Erreur critique :", err)
   } finally {
     loadingModal.value = false
   }
+}
+
+const applyAiSuggestion = (item) => {
+  if (!item.aiRecommendation) return
+  item.setsList.forEach(set => {
+    set.weight = item.aiRecommendation.weight
+    set.reps = item.aiRecommendation.reps
+  })
+  item.showAiSuggestion = false
+}
+
+const dismissAiSuggestion = (item) => {
+  item.showAiSuggestion = false
 }
 
 const completeSet = (block, exercise, set) => {
@@ -988,7 +1141,7 @@ const completeSet = (block, exercise, set) => {
 const addSet = (exercise) => {
   const last = exercise.setsList[exercise.setsList.length - 1]
   exercise.setsList.push({
-    weight: last ? last.weight : 0,
+    weight: last ? last.weight : null,
     reps: last ? last.reps : 10,
     completed: false
   })
@@ -1018,7 +1171,7 @@ const finishWorkout = async () => {
             exercise_name: item.exercise_name,
             set_number: index + 1,
             reps: s.reps,
-            weight: s.weight,
+            weight: s.weight || 0,
             is_cardio: false,
             duration_minutes: null,
             distance_km: null,

@@ -21,9 +21,9 @@
 
       <div v-else class="space-y-6">
         
-        <!-- Informations Générales & Genre -->
+        <!-- Informations Générales & Niveaux -->
         <div class="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-gray-200 space-y-6">
-          <h2 class="text-lg font-bold text-gray-800 border-b pb-3">Informations de base</h2>
+          <h2 class="text-lg font-bold text-gray-800 border-b pb-3">Informations de base & Niveaux</h2>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -59,6 +59,34 @@
                 <option value="WEIGHT_LOSS">Perte de poids</option>
                 <option value="HEALTH">Santé / Bien-être</option>
                 <option value="ENDURANCE">Endurance / Cardio</option>
+              </select>
+            </div>
+
+            <!-- Niveaux de pratique -->
+            <div>
+              <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-1.5">Niveau Musculation</label>
+              <select v-model="form.levelStrength" class="w-full bg-gray-50 border border-gray-200 p-3.5 rounded-xl text-sm font-bold text-gray-800 outline-none focus:border-indigo-500 transition">
+                <option value="BEGINNER">Débutant</option>
+                <option value="INTERMEDIATE">Intermédiaire</option>
+                <option value="ADVANCED">Avancé</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-1.5">Niveau Cardio / Endurance</label>
+              <select v-model="form.levelCardio" class="w-full bg-gray-50 border border-gray-200 p-3.5 rounded-xl text-sm font-bold text-gray-800 outline-none focus:border-indigo-500 transition">
+                <option value="BEGINNER">Débutant</option>
+                <option value="INTERMEDIATE">Intermédiaire</option>
+                <option value="ADVANCED">Avancé</option>
+              </select>
+            </div>
+
+            <div class="sm:col-span-2">
+              <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-1.5">Niveau Mobilité</label>
+              <select v-model="form.levelMobility" class="w-full bg-gray-50 border border-gray-200 p-3.5 rounded-xl text-sm font-bold text-gray-800 outline-none focus:border-indigo-500 transition">
+                <option value="BEGINNER">Débutant</option>
+                <option value="INTERMEDIATE">Intermédiaire</option>
+                <option value="ADVANCED">Avancé</option>
               </select>
             </div>
           </div>
@@ -248,6 +276,9 @@ const form = reactive({
   gender: '',
   height: null,
   goal: 'HEALTH',
+  levelStrength: 'INTERMEDIATE',
+  levelCardio: 'INTERMEDIATE',
+  levelMobility: 'INTERMEDIATE',
   trackWeight: false,
   equipment: [],
   injuriesList: []
@@ -416,6 +447,9 @@ onMounted(async () => {
         form.gender = data.gender || ''
         form.height = data.height || null
         form.goal = data.goal || 'HEALTH'
+        form.levelStrength = data.level_strength || 'INTERMEDIATE'
+        form.levelCardio = data.level_cardio || 'INTERMEDIATE'
+        form.levelMobility = data.level_mobility || 'INTERMEDIATE'
         form.trackWeight = data.track_weight || false
         form.equipment = data.equipment_access || []
         form.injuriesList = data.injuries_list || []
@@ -442,6 +476,9 @@ const saveProfile = async () => {
         gender: form.gender || null,
         height: form.height || null,
         goal: form.goal,
+        level_strength: form.levelStrength,
+        level_cardio: form.levelCardio,
+        level_mobility: form.levelMobility,
         track_weight: form.trackWeight,
         equipment_access: form.equipment,
         injuries_list: form.injuriesList,

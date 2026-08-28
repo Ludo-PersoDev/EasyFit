@@ -8,8 +8,11 @@
         <h2 class="text-xl sm:text-2xl font-bold text-gray-800">
           {{ isEditing ? '✏️ Modifier la séance' : '✨ Créer une nouvelle séance' }}
         </h2>
+		<router-link to="/workoutlist" class="text-xs sm:text-sm text-gray-600 hover:text-gray-900 font-bold bg-gray-100 px-3.5 py-2 rounded-xl transition">
+          ← Revenir aux Séances
+        </router-link>
         <router-link to="/dashboard" class="text-xs sm:text-sm text-gray-600 hover:text-gray-900 font-bold bg-gray-100 px-3.5 py-2 rounded-xl transition">
-          ← Retour au tableau de bord
+          ← Retour Accueil
         </router-link>
       </div>
 

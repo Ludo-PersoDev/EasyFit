@@ -5,7 +5,7 @@
       <!-- En-tête avec barre de progression -->
       <div class="space-y-4">
         <div class="flex justify-between items-center">
-          <span class="text-xs font-extrabold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
+          <span class="text-xs font-extrabold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-150">
             Étape {{ step }} sur 4
           </span>
           <span class="text-xs font-bold text-gray-400">
@@ -93,24 +93,59 @@
           </p>
         </div>
 
-        <!-- Étape 2 : Objectifs -->
-        <div v-if="step === 2" class="space-y-3 animate-fadeIn">
-          <div 
-            v-for="goalOption in goalOptions" 
-            :key="goalOption.value"
-            @click="form.goal = goalOption.value"
-            :class="form.goal === goalOption.value ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-200 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'"
-            class="p-4 rounded-2xl border-2 cursor-pointer transition flex items-center justify-between group"
-          >
-            <div class="flex items-center gap-3">
-              <span class="text-2xl">{{ goalOption.icon }}</span>
-              <div>
-                <p class="font-bold text-sm sm:text-base text-gray-800 group-hover:text-indigo-600 transition">{{ goalOption.label }}</p>
-                <p class="text-xs text-gray-500">{{ goalOption.desc }}</p>
+        <!-- Étape 2 : Objectifs & Niveaux de Pratique -->
+        <div v-if="step === 2" class="space-y-4 animate-fadeIn max-h-[340px] overflow-y-auto pr-1">
+          <div class="space-y-3">
+            <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block">Objectif Principal</label>
+            <div 
+              v-for="goalOption in goalOptions" 
+              :key="goalOption.value"
+              @click="form.goal = goalOption.value"
+              :class="form.goal === goalOption.value ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-200 shadow-sm' : 'border-gray-200 bg-white hover:border-gray-300'"
+              class="p-3.5 rounded-2xl border-2 cursor-pointer transition flex items-center justify-between group"
+            >
+              <div class="flex items-center gap-3">
+                <span class="text-xl">{{ goalOption.icon }}</span>
+                <div>
+                  <p class="font-bold text-sm text-gray-800 group-hover:text-indigo-600 transition">{{ goalOption.label }}</p>
+                  <p class="text-[11px] text-gray-500">{{ goalOption.desc }}</p>
+                </div>
+              </div>
+              <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center" :class="form.goal === goalOption.value ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300'">
+                <span v-if="form.goal === goalOption.value" class="text-xs">✓</span>
               </div>
             </div>
-            <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center" :class="form.goal === goalOption.value ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300'">
-              <span v-if="form.goal === goalOption.value" class="text-xs">✓</span>
+          </div>
+
+          <!-- Niveaux par discipline (text) -->
+          <div class="space-y-3 pt-2 border-t border-gray-100">
+            <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block">Tes Niveaux de Pratique</label>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="text-[10px] font-bold text-gray-500 uppercase">Musculation</label>
+                <select v-model="form.levelStrength" class="w-full bg-gray-50 border border-gray-200 p-2.5 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-indigo-500">
+                  <option value="BEGINNER">Débutant</option>
+                  <option value="INTERMEDIATE">Intermédiaire</option>
+                  <option value="ADVANCED">Avancé</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[10px] font-bold text-gray-500 uppercase">Cardio / Endurance</label>
+                <select v-model="form.levelCardio" class="w-full bg-gray-50 border border-gray-200 p-2.5 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-indigo-500">
+                  <option value="BEGINNER">Débutant</option>
+                  <option value="INTERMEDIATE">Intermédiaire</option>
+                  <option value="ADVANCED">Avancé</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[10px] font-bold text-gray-500 uppercase">Mobilité</label>
+                <select v-model="form.levelMobility" class="w-full bg-gray-50 border border-gray-200 p-2.5 rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-indigo-500">
+                  <option value="BEGINNER">Débutant</option>
+                  <option value="INTERMEDIATE">Intermédiaire</option>
+                  <option value="ADVANCED">Avancé</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -246,6 +281,9 @@ const form = reactive({
   weight: null,
   enableWeight: false,
   goal: 'HEALTH', 
+  levelStrength: 'INTERMEDIATE',
+  levelCardio: 'INTERMEDIATE',
+  levelMobility: 'INTERMEDIATE',
   equipment: [], 
   injuriesList: []
 })
@@ -265,7 +303,7 @@ const handleWeightToggle = () => {
 
 const stepTitles = [
   { title: "Faisons connaissance !", subtitle: "Renseigne tes informations de base." },
-  { title: "Quel est ton objectif principal ?", subtitle: "Cela orientera tes programmes d'entraînement." },
+  { title: "Objectifs & Niveaux", subtitle: "Définis tes buts et ton niveau actuel par discipline." },
   { title: "Ton matériel disponible", subtitle: "Coche les équipements que tu as sous la main." },
   { title: "Santé & Biomécanique", subtitle: "Personnalise tes zones de vigilance et antécédents." }
 ]
@@ -359,6 +397,9 @@ const nextStep = async () => {
       gender: form.gender || null,
       height: form.height || null,
       goal: form.goal,
+      level_strength: form.levelStrength,
+      level_cardio: form.levelCardio,
+      level_mobility: form.levelMobility,
       equipment_access: form.equipment,
       injuries_list: form.injuriesList,
       updated_at: new Date()
