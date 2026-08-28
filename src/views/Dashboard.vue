@@ -151,7 +151,7 @@
 
     <!-- Modale d'exécution -->
     <div v-if="isExecutionModalOpen" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
-      <div class="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[85vh] flex flex-col p-5 shadow-2xl relative">
+      <div class="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-lg rounded-none sm:rounded-2xl flex flex-col p-5 shadow-2xl relative">
         
         <!-- En-tête + Minuteurs actifs -->
         <div class="flex justify-between items-center mb-4 border-b pb-3 flex-shrink-0 gap-2">
