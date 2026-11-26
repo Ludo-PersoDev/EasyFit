@@ -1,0 +1,21 @@
+name: Supabase keep-alive
+
+# Empêche la mise en pause automatique du projet Supabase gratuit (7 jours sans activité)
+on:
+  schedule:
+    - cron: '43 6 */2 * *'   # tous les 2 jours à 6h43 UTC
+  workflow_dispatch:          # lancement manuel possible depuis l'onglet Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Requête légère sur la base
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -sSf "$SUPABASE_URL/rest/v1/exercises?select=*&limit=1" \
+            -H "apikey: $SUPABASE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_KEY" -o /dev/null
+          echo "Supabase OK"
