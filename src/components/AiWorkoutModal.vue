@@ -131,91 +131,28 @@ const generateAndSaveWorkouts = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) throw new Error("Utilisateur non authentifié.")
 
-    // 2. Récupérer le profil utilisateur
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single()
-
-    // 3. Récupérer le catalogue des exercices
-    const { data: exercisesCatalog } = await supabase
-      .from('exercises')
-      .select('id, name, muscle_group, equipment')
-
-    // 4. Appel à l'API Gemini (Modèle 3.5 Flash)
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-    if (!apiKey) throw new Error("Clé API Gemini introuvable dans les variables d'environnement.")
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
-
-    const prompt = `
-      Tu es un coach sportif expert. Génère un programme d'entraînement complet sous forme de tableau JSON strict.
-      
-      ORIENTATION DEMANDÉE : ${sessionType.value}
-      
-      PARAMÈTRES UTILISATEUR :
-      - Objectif principal : ${profile?.goal || 'HEALTH'}
-      - Niveaux : Muscu (${profile?.level_strength || 'INTERMEDIATE'}), Cardio (${profile?.level_cardio || 'INTERMEDIATE'}), Mobilité (${profile?.level_mobility || 'INTERMEDIATE'})
-      - Matériel disponible : ${JSON.stringify(profile?.equipment_access || ['Poids du corps'])}
-      - Contraintes / Blessures : ${JSON.stringify(profile?.injuries_list || [])}
-      - Format : ${sessionsCount.value} séances, durée ~${sessionDuration.value} minutes.
-
-      RÈGLES STRICTES SELON L'ORIENTATION DEMANDÉE :
-      - Si HYPERTROPHY : Conçois exclusivement des séances orientées volume (formats de type 3 à 4 séries de 8 à 12 répétitions, temps de repos modérés de 60 à 90s). Interdiction totale de mettre du cardio ou de la course à pied.
-      - Si PURE_STRENGTH : Conçois exclusivement des séances de force pure (formats de type 5x5 ou charges lourdes, basées sur des mouvements polyarticulaires, reps basses de 3 à 6, et temps de repos longs de 2 à 3 minutes). Interdiction totale de mettre du cardio ou de la course à pied.
-      - Si RUNNING_CARDIO : Intègre en priorité de la course à pied, du fractionné ou du cardio.
-      - Si MOBILITY : Privilégie les étirements et la souplesse.
-      - Si HIIT : Fais du circuit training dynamique.
-      - Si MIXED : Fais intelligemment selon l'objectif renseigné sur le profil.
-
-      RÈGLES IMPORTANTES POUR LE CARDIO / FRACTIONNÉ (si applicable) :
-      - Pour les séances de course à pied / fractionné / HIIT, décompose la séance étape par étape sous forme de lignes distinctes.
-      - Utilise les champs "duration_minutes" et "distance_km" pour chaque occurrence cardio, et laisse-les à null pour la musculation (en utilisant "sets" et "reps").
-      - RÈGLE ÉCHAUFFEMENT / RETOUR AU CALME : Pour chaque séance de musculation (Hypertrophie ou Force), intègre systématiquement des exercices d'échauffement articulaire ou dynamique au tout début, et des exercices de retour au calme ou d'étirements à la toute fin.
-
-      CATALOGUE D'EXERCICES DISPONIBLES :
-      ${JSON.stringify(exercisesCatalog || [])}
-
-      FORMAT DE RÉPONSE ATTENDU (Uniquement un tableau JSON valide, sans balises markdown, sans texte additionnel) :
-      [
-        {
-          "title": "Nom de la séance",
-          "exercises": [
-            {
-              "exercise_name": "Nom exact de l'exercice",
-              "sets": 4,
-              "reps": 10,
-              "duration_minutes": null,
-              "distance_km": null,
-              "rest_seconds": 90,
-              "is_cardio": false,
-              "is_superset": false
-            }
-          ]
-        }
-      ]
-    `
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          response_mime_type: "application/json"
-        }
-      })
+    // 2. Demander le programme à la fonction Supabase (la clé Claude reste côté serveur)
+    const { data, error: fnError } = await supabase.functions.invoke('coach-ai', {
+      body: {
+        action: 'generate_program',
+        sessionType: sessionType.value,
+        sessionsCount: sessionsCount.value,
+        sessionDuration: sessionDuration.value
+      }
     })
 
-    const result = await response.json()
-
-    if (!result.candidates || !result.candidates[0]) {
-      throw new Error("Erreur lors de la réponse de l'IA.")
+    if (fnError) {
+      throw new Error(
+        fnError.context?.status === 429
+          ? "Trop de demandes à l'IA, réessaie dans un instant."
+          : "Erreur lors de la réponse de l'IA."
+      )
     }
 
-    const jsonString = result.candidates[0].content.parts[0].text
-    const generatedWorkouts = JSON.parse(jsonString)
+    const generatedWorkouts = data?.workouts
+    if (!Array.isArray(generatedWorkouts) || generatedWorkouts.length === 0) {
+      throw new Error("Erreur lors de la réponse de l'IA.")
+    }
 
     // 5. Enregistrer en base
     for (const workout of generatedWorkouts) {

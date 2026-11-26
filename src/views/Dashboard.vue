@@ -834,64 +834,30 @@ const fetchSingleAiSuggestion = async (item) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const fourWeeksAgo = new Date()
-    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28)
-
-    // On cible bien EXCLUSIVEMENT l'historique de cet exercice sur les 4 dernières semaines
-    const { data: historyData } = await supabase
-      .from('workout_set_logs')
-      .select('weight, reps, set_number, created_at')
-      .eq('user_id', user.id)
-      .eq('exercise_name', item.exercise_name)
-      .eq('is_cardio', false)
-      .gte('created_at', fourWeeksAgo.toISOString())
-      .order('created_at', { ascending: true })
-
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-    if (!apiKey) return
-
-    // Utilisation d'un modèle flash standard stable pour l'API
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`
-    
-    const prompt = `
-      Tu es un coach sportif expert. Analyse l'historique des 4 dernières semaines pour CET EXERCICE UNIQUEMENT (${item.exercise_name}).
-      Détermine s'il s'agit d'une progression ou d'une contre-performance, et propose la meilleure surcharge progressive (par le poids ou les répétitions).
-      
-      HISTORIQUE DE L'EXERCICE : ${JSON.stringify(historyData || [])}
-      EXERCICE ACTUEL : ${JSON.stringify({ name: item.exercise_name, sets: item.setsList.length, currentWeight: item.setsList[0]?.weight })}
-
-      Renvoie un objet JSON STRICT avec cette structure exacte :
-      { "weight": 62.5, "reps": 10, "text": "Analyse de tes perfs : passe à 62.5kg ou valide tes 10 reps." }
-    `
-
-    const aiRes = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { response_mime_type: "application/json" }
-      })
+    const { data: rec, error: fnError } = await supabase.functions.invoke('coach-ai', {
+      body: {
+        action: 'suggest_progression',
+        exercise_name: item.exercise_name,
+        sets: item.setsList.length,
+        current_weight: item.setsList[0]?.weight ?? null
+      }
     })
 
-    if (aiRes.status === 429) {
-      alert("Quota Gemini atteint (429). Patiente quelques secondes.")
+    if (fnError) {
+      if (fnError.context?.status === 429) {
+        alert("Trop de demandes à l'IA. Patiente quelques secondes.")
+      } else {
+        console.error("Erreur suggestion IA :", fnError)
+      }
       return
     }
 
-    const aiData = await aiRes.json()
-
-    if (aiData.candidates && aiData.candidates[0]) {
-      let rawText = aiData.candidates[0].content.parts[0].text.trim()
-      rawText = rawText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "")
-      const rec = JSON.parse(rawText)
-      
-      item.aiRecommendation = {
-        weight: Number(rec.weight) || (item.setsList[0]?.weight || 0),
-        reps: Number(rec.reps) || 10,
-        text: rec.text
-      }
-      item.showAiSuggestion = true
+    item.aiRecommendation = {
+      weight: Number(rec.weight) || (item.setsList[0]?.weight || 0),
+      reps: Number(rec.reps) || 10,
+      text: rec.text
     }
+    item.showAiSuggestion = true
   } catch (err) {
     console.error("Erreur suggestion IA :", err)
   } finally {
